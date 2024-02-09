@@ -160,12 +160,13 @@ function is_alpha_reaction(key) {
 }
 
 function update_collider() {
+    const do_visual_updates = current_menu == 'atomic' && current_submenu['atomic'] == 'collider';
     // achievement 143: unlock autobuyer and auto-assigner for Collision Points
     if (player.achievements['143'].complete && player.auto_assigner_enabled && player.collision_points > 0) {
         let checked_reactions = 0;
         for (let key of Object.keys(MECHANIC_COLLIDER_REACTION_LIST)) {
             if (!document.getElementById("mechanic_collider_reaction_checkbox_" + key).checked) continue;
-    
+
             let reaction_visible = true;
             for (let i = 0; i < MECHANIC_COLLIDER_REACTION_LIST[key][0].length; i++) {
                 if (MECHANIC_COLLIDER_REACTION_LIST[key][0][i].includes('a') 
@@ -200,12 +201,11 @@ function update_collider() {
     }
 
     let generation_levels = generation_points_effect();
-
-    for (let key of Object.keys(player.upgrades)) {
-        if (key.includes('a')) {
-            free_atom_levels[key] = big(0);
-            if (functions[player.upgrades[key].availability_function]()) free_atom_levels[key] = generation_levels;
-        }
+    if(typeof this.upgrades === 'undefined')
+        this.upgrades = Object.keys(player.upgrades).filter(e=>e.includes('a'));
+    for (let key of this.upgrades) {
+        free_atom_levels[key] = big(0);
+        if (functions[player.upgrades[key].availability_function]()) free_atom_levels[key] = generation_levels;
     }
     free_atom_levels['ph'] = big(0);
     free_atom_levels['n'] = big(0);
@@ -216,19 +216,88 @@ function update_collider() {
     }
 
 
-    for (let key of Object.keys(player.upgrades)) {
-        if (key.includes('a')) {
-            if (!(functions[player.upgrades[key].availability_function]())) continue;
-            let element_level = Number(key.substr(1));
+    for (let key of this.upgrades) {
+        if (!(functions[player.upgrades[key].availability_function]())) continue;
+        let element_level = Number(key.substr(1));
 
-            // a14_1: get free levels of elements up to Carbon
-            if (player.milestones['a14_1'].is_active() && element_level <= 6) {
-                free_atom_levels[key] = free_atom_levels[key].add(player.milestones['a14_1'].get_effect());
-            }
+        // a14_1: get free levels of elements up to Carbon
+        if (player.milestones['a14_1'].is_active() && element_level <= 6) {
+            free_atom_levels[key] = free_atom_levels[key].add(player.milestones['a14_1'].get_effect());
         }
     }
 
     alpha_reactions_active = 0;
+
+    let unlocked_elements = highest_unlocked_element();
+    let elements = document.getElementsByClassName("collider-periodic-table-element");
+    for (let i = 0; i < elements.length; i++) {
+        elements.item(i).style.visibility = "hidden";
+    }
+    for (let i = 1; i <= unlocked_elements; i++) {
+        document.getElementById("mechanic_collider_element_" + i).style.visibility = "";
+    }
+
+    let max_element = highest_unlocked_element();
+    let transfer_ratio = levels_passed_through_reaction_ratio();
+    if(do_visual_updates)
+        document.getElementById("mechanic_collider_free_level_transfer").textContent = format_number(transfer_ratio.mult(100));
+
+    let activated_reactions = 0;
+    for (let key of Object.keys(MECHANIC_COLLIDER_REACTION_LIST)) {
+        player.active_reactions[key] = document.getElementById("mechanic_collider_reaction_checkbox_" + key).checked;
+        if(do_visual_updates)
+            document.getElementById("mechanic_collider_reaction_" + key).className = "collider-reaction-formula";
+
+        let reaction_visible = true;
+        for (let i = 0; i < MECHANIC_COLLIDER_REACTION_LIST[key][0].length; i++) {
+            if (MECHANIC_COLLIDER_REACTION_LIST[key][0][i].includes('a') 
+            && !functions[player.upgrades[MECHANIC_COLLIDER_REACTION_LIST[key][0][i]].availability_function]()) {
+                reaction_visible = false;
+                break;
+            }
+        }
+        for (let i = 0; i < MECHANIC_COLLIDER_REACTION_LIST[key][1].length; i++) {
+            if (MECHANIC_COLLIDER_REACTION_LIST[key][1][i].includes('a') 
+            && !functions[player.upgrades[MECHANIC_COLLIDER_REACTION_LIST[key][1][i]].availability_function]()) {
+                reaction_visible = false;
+                break;
+            }
+        }
+        if(do_visual_updates)
+            if (reaction_visible) document.getElementById("mechanic_collider_reaction_" + key).style.display = "";
+        else document.getElementById("mechanic_collider_reaction_" + key).style.display = "none";
+
+        if (reaction_visible && player.active_reactions[key] && activated_reactions < player.collision_points_in_reaction) {
+            activated_reactions += 1;
+            if (is_alpha_reaction(key)) alpha_reactions_active += 1;
+
+            let total_free_levels = big(0);
+            for (let i = 0; i < MECHANIC_COLLIDER_REACTION_LIST[key][0].length; i++) {
+                total_free_levels = total_free_levels.add(get_atom_level(MECHANIC_COLLIDER_REACTION_LIST[key][0][i]));
+            }
+
+            let reaction_power = big(transfer_ratio);
+            // a09: alpha is more effective
+            if (is_alpha_reaction(key)) reaction_power = reaction_power.mult(player.upgrades['a09'].get_effect()); 
+
+            total_free_levels = total_free_levels.mult(reaction_power).add(1e-6).rounddown();
+
+            for (let i = 0; i < MECHANIC_COLLIDER_REACTION_LIST[key][1].length; i++) {
+                free_atom_levels[MECHANIC_COLLIDER_REACTION_LIST[key][1][i]] = free_atom_levels[MECHANIC_COLLIDER_REACTION_LIST[key][1][i]].add(total_free_levels);
+            }
+            if(do_visual_updates)
+                document.getElementById("mechanic_collider_reaction_" + key).className = "collider-reaction-formula active";
+        }
+    }
+
+    for (let key of this.upgrades) {
+        if (!functions[player.upgrades[key].availability_function]()) free_atom_levels[key] = big(0);
+        document.getElementById("mechanic_collider_" + key + "_level").textContent = format_number(get_atom_level(key));
+        document.getElementById("upgrade_" + key + "_total_level").textContent = format_number(get_atom_level(key));
+    }
+
+    if(!do_visual_updates) // =================================================================================================================================================
+        return;
 
     if (!player.upgrades['v211'].is_active()) {
         document.getElementById("mechanic_collider_ck_prebreak").style.display = "";
@@ -264,62 +333,7 @@ function update_collider() {
     document.getElementById("mechanic_collider_synthesis_effect").textContent = format_element(highest_unlocked_element());
     document.getElementById("mechanic_collider_generation_effect").textContent = format_number(generation_levels);
 
-    let unlocked_elements = highest_unlocked_element();
-    let elements = document.getElementsByClassName("collider-periodic-table-element");
-    for (let i = 0; i < elements.length; i++) {
-        elements.item(i).style.visibility = "hidden";
-    }
-    for (let i = 1; i <= unlocked_elements; i++) {
-        document.getElementById("mechanic_collider_element_" + i).style.visibility = "";
-    }
 
-    let transfer_ratio = levels_passed_through_reaction_ratio();
-    document.getElementById("mechanic_collider_free_level_transfer").textContent = format_number(transfer_ratio.mult(100));
-
-    let activated_reactions = 0;
-    for (let key of Object.keys(MECHANIC_COLLIDER_REACTION_LIST)) {
-        player.active_reactions[key] = document.getElementById("mechanic_collider_reaction_checkbox_" + key).checked;
-        document.getElementById("mechanic_collider_reaction_" + key).className = "collider-reaction-formula";
-
-        let reaction_visible = true;
-        for (let i = 0; i < MECHANIC_COLLIDER_REACTION_LIST[key][0].length; i++) {
-            if (MECHANIC_COLLIDER_REACTION_LIST[key][0][i].includes('a') 
-            && !functions[player.upgrades[MECHANIC_COLLIDER_REACTION_LIST[key][0][i]].availability_function]()) {
-                reaction_visible = false;
-                break;
-            }
-        }
-        for (let i = 0; i < MECHANIC_COLLIDER_REACTION_LIST[key][1].length; i++) {
-            if (MECHANIC_COLLIDER_REACTION_LIST[key][1][i].includes('a') 
-            && !functions[player.upgrades[MECHANIC_COLLIDER_REACTION_LIST[key][1][i]].availability_function]()) {
-                reaction_visible = false;
-                break;
-            }
-        }
-        if (reaction_visible) document.getElementById("mechanic_collider_reaction_" + key).style.display = "";
-        else document.getElementById("mechanic_collider_reaction_" + key).style.display = "none";
-
-        if (reaction_visible && player.active_reactions[key] && activated_reactions < player.collision_points_in_reaction) {
-            activated_reactions += 1;
-            if (is_alpha_reaction(key)) alpha_reactions_active += 1;
-            
-            let total_free_levels = big(0);
-            for (let i = 0; i < MECHANIC_COLLIDER_REACTION_LIST[key][0].length; i++) {
-                total_free_levels = total_free_levels.add(get_atom_level(MECHANIC_COLLIDER_REACTION_LIST[key][0][i]));
-            }
-
-            let reaction_power = big(transfer_ratio);
-            // a09: alpha is more effective
-            if (is_alpha_reaction(key)) reaction_power = reaction_power.mult(player.upgrades['a09'].get_effect()); 
-
-            total_free_levels = total_free_levels.mult(reaction_power).add(1e-6).rounddown();
-
-            for (let i = 0; i < MECHANIC_COLLIDER_REACTION_LIST[key][1].length; i++) {
-                free_atom_levels[MECHANIC_COLLIDER_REACTION_LIST[key][1][i]] = free_atom_levels[MECHANIC_COLLIDER_REACTION_LIST[key][1][i]].add(total_free_levels);
-            }
-            document.getElementById("mechanic_collider_reaction_" + key).className = "collider-reaction-formula active";
-        }
-    }
     if (unlocked_elements < 2) document.getElementById("mechanic_collider_reactions_section_1").style.display = "none";
     else document.getElementById("mechanic_collider_reactions_section_1").style.display = "";
     if (unlocked_elements < 7) document.getElementById("mechanic_collider_reactions_section_2").style.display = "none";
@@ -338,15 +352,9 @@ function update_collider() {
     document.getElementById("mechanic_collider_reaction_photons").textContent = format_number(reaction_points_effect_photons());
     document.getElementById("mechanic_collider_reaction_neutrons").textContent = format_number(reaction_points_effect_neutrons());
 
-    for (let key of Object.keys(player.upgrades)) {
-        if (key.includes('a')) {
-            if (!functions[player.upgrades[key].availability_function]()) free_atom_levels[key] = big(0);
-            document.getElementById("mechanic_collider_" + key + "_level").textContent = format_number(get_atom_level(key));
-            document.getElementById("upgrade_" + key + "_total_level").textContent = format_number(get_atom_level(key));
-        }
-    }
 
     // achievement 143: unlock autobuyer and auto-assigner for Collision Points
+    //
     if (!player.achievements['143'].complete) document.getElementById('mechanic_collider_auto_assigner').style.display = 'none';
     else {
         document.getElementById('mechanic_collider_auto_assigner').style.display = '';
