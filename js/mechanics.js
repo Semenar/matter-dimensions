@@ -11,9 +11,12 @@ function update_mechanics_first() {
 
 function update_mechanics() {
     update_inertia();
-    update_temperature();
-    update_collider();
-    update_population();
+	if(player.unlocked_dimensional && current_menu == 'vacuumic' && current_submenu['vacuumic'] == 'temperature')
+		update_temperature();
+	//if(player.unlocked_atomic)
+		update_collider();
+	if(player.unlocked_biological)
+		update_population();
     update_settings();
     update_experiments();
 }

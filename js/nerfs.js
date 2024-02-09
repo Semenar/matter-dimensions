@@ -75,7 +75,8 @@ function update_challenges_power() {
 
     let adj_time_passed = player.time_passed;
     // population slows down time
-    adj_time_passed /= power_population_time().toInt();
+	if(!player.population.eq(1))
+		adj_time_passed /= power_population_time().toInt();
 
     player.challenge_strength_7 = new BigNumber(3);
     player.challenge_strength_7 = player.challenge_strength_7.pow(Math.pow((adj_time_passed / 1000) + 1, 0.5) * Math.pow(2, adj_time_passed / 60000) - 1);
